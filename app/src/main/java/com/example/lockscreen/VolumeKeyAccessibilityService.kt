@@ -133,7 +133,7 @@ class VolumeKeyAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
-        private const val CHORD_WINDOW_MS = 1200L
+        private const val CHORD_WINDOW_MS = 500L
         private const val TRIGGER_DEBOUNCE_MS = 450L
         private const val RELEASE_GUARD_MS = 700L
     }
