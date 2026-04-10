@@ -1,4 +1,4 @@
-# 黑屏挂机助手（FakeLockScreen）
+# 黑屏/息屏挂机助手（FakeLockScreen）   # Black Screen Idle Assistant (FakeLockScreen)   Black Screen Idle Assistant (FakeLockScreen)
 
 一个面向 Android 的前台服务工具：  
 启动后提供可拖动悬浮球，长按悬浮球进入“背光黑屏模式”（关闭背光但系统继续渲染），适合长时间挂机与投屏场景。
@@ -19,11 +19,11 @@
 
 本项目当前黑屏方案不是“画黑色遮罩”，而是 Root 下直接控制系统亮度与背光节点：
 
-- `settings put system screen_brightness 0`
-- `cmd display set-brightness 0`
-- `/sys/class/backlight/*/brightness`
-- `/sys/class/backlight/*/bl_power`
-- `/sys/class/graphics/fb*/blank`
+- `settings put system screen_brightness 0设置系统屏幕亮度为 0 。`设置系统屏幕亮度为 0 。
+- `cmd display set-brightness 0命令提示符 显示 设置亮度 0`命令行设置显示屏亮度为 0 。
+- `/sys/class/backlight/*/brightness/系统/类/背光灯/*/亮度`“/sys/class/backlight/*/brightness”
+- `/sys/class/backlight/*/bl_power/系统/类/背光灯/*/背光灯电源`“/sys/class/backlight/*/bl_power”
+- `/sys/class/graphics/fb*/blank/系统/类/图形/帧缓冲器*/空白`“/sys/class/graphics/fb*/blank”
 
 并在黑屏期间循环强化，防止系统自动拉亮。
 
@@ -31,7 +31,7 @@
 
 ## 3. 环境要求
 
-- Android 7.0+（`minSdk 24`）
+- Android 7.0+（`minSdk 24`）- Android 7.0 （`minSdk 24`）
 - Root 权限（必须，且建议 `su` 设为“始终允许”）
 - 已开启悬浮窗权限
 - 已开启本应用无障碍服务（用于组合键退出黑屏）
