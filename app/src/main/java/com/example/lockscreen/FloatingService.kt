@@ -23,6 +23,16 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import java.io.BufferedReader
+import java.io.BufferedWriter
+import java.io.InputStreamReader
+import java.io.OutputStreamWriter
+import java.net.Inet4Address
+import java.net.NetworkInterface
+import java.net.ServerSocket
+import java.net.Socket
+import java.nio.charset.StandardCharsets
+import java.util.Collections
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -51,6 +61,15 @@ class FloatingService : Service() {
     private var fbBlankPathValueBackup: MutableMap<String, String> = linkedMapOf()
     private var backlightEnforceRunnable: Runnable? = null
     private var screenStateReceiver: BroadcastReceiver? = null
+    private var lastScreenOffWakeAtMs = 0L
+    private var screenOffWakePending = false
+    private var clearWakePendingRunnable: Runnable? = null
+    private val secureSettingsBackup: MutableMap<String, String> = linkedMapOf()
+    private var noInstantLockPolicyApplied = false
+    @Volatile
+    private var lanServerRunning = false
+    private var lanServerSocket: ServerSocket? = null
+    private var lanServerThread: Thread? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -83,6 +102,7 @@ class FloatingService : Service() {
         when (intent?.action ?: ACTION_START) {
             ACTION_START -> {
                 updateFloatingBallSize(getSavedBallSizeDp())
+                syncLanControlServerState()
             }
 
             ACTION_UPDATE_BALL_SIZE -> {
@@ -95,6 +115,14 @@ class FloatingService : Service() {
             ACTION_EXIT_BLACK_SCREEN -> {
                 exitBlackScreen()
             }
+
+            ACTION_ENTER_BLACK_SCREEN -> {
+                enterBlackScreen()
+            }
+
+            ACTION_SYNC_LAN_CONTROL -> {
+                syncLanControlServerState()
+            }
         }
         return START_STICKY
     }
@@ -103,7 +131,10 @@ class FloatingService : Service() {
         longPressRunnable?.let(mainHandler::removeCallbacks)
         isBlackModeOn = false
         stopBacklightEnforceLoop()
+        clearScreenOffWakePending()
         unregisterScreenStateReceiver()
+        stopLanControlServer()
+        restoreNoInstantLockPolicyIfNeeded()
         restoreBacklightIfNeeded()
         removeFloatingBall()
         isRunning = false
@@ -203,6 +234,7 @@ class FloatingService : Service() {
         }
 
         if (applyBacklightOffIfNeeded()) {
+            applyNoInstantLockPolicyIfNeeded()
             isBlackModeOn = true
             startBacklightEnforceLoop()
             return
@@ -213,6 +245,8 @@ class FloatingService : Service() {
     private fun exitBlackScreen() {
         isBlackModeOn = false
         stopBacklightEnforceLoop()
+        clearScreenOffWakePending()
+        restoreNoInstantLockPolicyIfNeeded()
         restoreBacklightIfNeeded()
         floatingView?.visibility = View.VISIBLE
     }
@@ -230,6 +264,9 @@ class FloatingService : Service() {
         longPressRunnable?.let(mainHandler::removeCallbacks)
         isBlackModeOn = false
         stopBacklightEnforceLoop()
+        clearScreenOffWakePending()
+        stopLanControlServer()
+        restoreNoInstantLockPolicyIfNeeded()
         restoreBacklightIfNeeded()
         removeFloatingBall()
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -406,6 +443,11 @@ class FloatingService : Service() {
                     mainHandler.postDelayed({ if (isBlackModeOn) enforceBacklightOffNow() }, 25)
                     mainHandler.postDelayed({ if (isBlackModeOn) enforceBacklightOffNow() }, 120)
                 }
+                if (action == Intent.ACTION_SCREEN_OFF) {
+                    triggerWakeByPowerKey()
+                } else if (action == Intent.ACTION_SCREEN_ON) {
+                    clearScreenOffWakePending()
+                }
             }
         }
 
@@ -421,6 +463,211 @@ class FloatingService : Service() {
         val receiver = screenStateReceiver ?: return
         runCatching { unregisterReceiver(receiver) }
         screenStateReceiver = null
+    }
+
+    private fun triggerWakeByPowerKey() {
+        val now = System.currentTimeMillis()
+        if (screenOffWakePending) {
+            return
+        }
+        if (now - lastScreenOffWakeAtMs < SCREEN_OFF_WAKE_DEBOUNCE_MS) {
+            return
+        }
+        screenOffWakePending = true
+        lastScreenOffWakeAtMs = now
+        clearWakePendingRunnable?.let(mainHandler::removeCallbacks)
+        clearWakePendingRunnable = Runnable {
+            screenOffWakePending = false
+            clearWakePendingRunnable = null
+        }
+        mainHandler.postDelayed(clearWakePendingRunnable!!, SCREEN_OFF_WAKE_PENDING_TIMEOUT_MS)
+
+        mainHandler.postDelayed({
+            if (!isBlackModeOn) {
+                clearScreenOffWakePending()
+                return@postDelayed
+            }
+            RootShell.run("cmd power wakeup")
+            RootShell.run("input keyevent KEYCODE_WAKEUP")
+            mainHandler.postDelayed({ clearScreenOffWakePending() }, 240L)
+        }, 80L)
+    }
+
+    private fun clearScreenOffWakePending() {
+        clearWakePendingRunnable?.let(mainHandler::removeCallbacks)
+        clearWakePendingRunnable = null
+        screenOffWakePending = false
+    }
+
+    private fun applyNoInstantLockPolicyIfNeeded() {
+        if (noInstantLockPolicyApplied) {
+            return
+        }
+
+        backupSecureSetting(SECURE_KEY_POWER_BUTTON_INSTANT_LOCK)
+        backupSecureSetting(SECURE_KEY_LOCK_AFTER_TIMEOUT)
+
+        RootShell.run("settings put secure $SECURE_KEY_POWER_BUTTON_INSTANT_LOCK 0")
+        RootShell.run("settings put secure $SECURE_KEY_LOCK_AFTER_TIMEOUT 2147483647")
+        noInstantLockPolicyApplied = true
+    }
+
+    private fun restoreNoInstantLockPolicyIfNeeded() {
+        if (!noInstantLockPolicyApplied) {
+            return
+        }
+
+        restoreSecureSetting(SECURE_KEY_POWER_BUTTON_INSTANT_LOCK)
+        restoreSecureSetting(SECURE_KEY_LOCK_AFTER_TIMEOUT)
+        secureSettingsBackup.clear()
+        noInstantLockPolicyApplied = false
+    }
+
+    private fun backupSecureSetting(key: String) {
+        secureSettingsBackup[key] = RootShell.runForOutput("settings get secure $key")
+    }
+
+    private fun restoreSecureSetting(key: String) {
+        val backup = secureSettingsBackup[key]?.trim().orEmpty()
+        if (backup.isBlank() || backup.equals("null", ignoreCase = true)) {
+            RootShell.run("settings delete secure $key")
+        } else {
+            RootShell.run("settings put secure $key ${quoteForShell(backup)}")
+        }
+    }
+
+    private fun syncLanControlServerState() {
+        if (isLanControlEnabled()) {
+            startLanControlServerIfNeeded()
+            return
+        }
+        stopLanControlServer()
+    }
+
+    private fun isLanControlEnabled(): Boolean {
+        return getSharedPreferences(AppSettings.PREFS_NAME, MODE_PRIVATE).getBoolean(
+            AppSettings.KEY_LAN_CONTROL_ENABLED,
+            false
+        )
+    }
+
+    private fun startLanControlServerIfNeeded() {
+        if (lanServerRunning) {
+            return
+        }
+
+        lanServerRunning = true
+        val thread = Thread {
+            runCatching {
+                ServerSocket(AppSettings.DEFAULT_LAN_PORT).use { server ->
+                    lanServerSocket = server
+                    while (lanServerRunning) {
+                        val socket = runCatching { server.accept() }.getOrNull() ?: continue
+                        handleLanClient(socket)
+                    }
+                }
+            }
+            lanServerSocket = null
+            lanServerRunning = false
+        }
+        lanServerThread = thread
+        thread.start()
+    }
+
+    private fun stopLanControlServer() {
+        lanServerRunning = false
+        runCatching { lanServerSocket?.close() }
+        lanServerSocket = null
+        lanServerThread = null
+    }
+
+    private fun handleLanClient(socket: Socket) {
+        socket.use { client ->
+            val reader = BufferedReader(InputStreamReader(client.getInputStream(), StandardCharsets.UTF_8))
+            val writer = BufferedWriter(OutputStreamWriter(client.getOutputStream(), StandardCharsets.UTF_8))
+            val requestLine = reader.readLine().orEmpty()
+            val path = requestLine.split(" ").getOrNull(1) ?: "/"
+            while (true) {
+                val line = reader.readLine() ?: break
+                if (line.isEmpty()) {
+                    break
+                }
+            }
+
+            when (path) {
+                "/black" -> {
+                    mainHandler.post { enterBlackScreen() }
+                    writeRedirectResponse(writer)
+                }
+                "/exit" -> {
+                    mainHandler.post { exitBlackScreen() }
+                    writeRedirectResponse(writer)
+                }
+                else -> {
+                    writeIndexResponse(writer)
+                }
+            }
+            writer.flush()
+        }
+    }
+
+    private fun writeRedirectResponse(writer: BufferedWriter) {
+        writer.write("HTTP/1.1 302 Found\r\n")
+        writer.write("Location: /\r\n")
+        writer.write("Connection: close\r\n")
+        writer.write("\r\n")
+    }
+
+    private fun writeIndexResponse(writer: BufferedWriter) {
+        val modeText = if (isBlackModeOn) "当前状态：黑屏中" else "当前状态：正常显示"
+        val html = """
+            <html>
+            <head>
+              <meta charset="utf-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1" />
+              <title>黑屏控制</title>
+              <style>
+                body { font-family: sans-serif; margin: 24px; background: #f6f7f9; color: #222; }
+                .box { max-width: 420px; margin: 0 auto; background: white; padding: 20px; border-radius: 14px; box-shadow: 0 6px 20px rgba(0,0,0,.08); }
+                h2 { margin-top: 0; }
+                .row { display: flex; gap: 10px; margin-top: 16px; }
+                a { display:inline-block; flex:1; text-align:center; text-decoration:none; padding: 12px 8px; border-radius: 10px; font-weight: 600; }
+                .black { background:#111; color:white; }
+                .exit { background:#1f6feb; color:white; }
+                p { color:#444; }
+              </style>
+            </head>
+            <body>
+              <div class="box">
+                <h2>黑屏挂机助手</h2>
+                <p>$modeText</p>
+                <div class="row">
+                  <a class="black" href="/black">进入黑屏</a>
+                  <a class="exit" href="/exit">退出黑屏</a>
+                </div>
+                <p>设备地址：${getLocalLanAddress()}</p>
+              </div>
+            </body>
+            </html>
+        """.trimIndent()
+
+        writer.write("HTTP/1.1 200 OK\r\n")
+        writer.write("Content-Type: text/html; charset=utf-8\r\n")
+        writer.write("Connection: close\r\n")
+        writer.write("\r\n")
+        writer.write(html)
+    }
+
+    private fun getLocalLanAddress(): String {
+        val ip = runCatching {
+            Collections.list(NetworkInterface.getNetworkInterfaces())
+                .asSequence()
+                .flatMap { Collections.list(it.inetAddresses).asSequence() }
+                .firstOrNull { it is Inet4Address && !it.isLoopbackAddress }
+                ?.hostAddress
+                ?: "0.0.0.0"
+        }.getOrDefault("0.0.0.0")
+        return "http://$ip:${AppSettings.DEFAULT_LAN_PORT}/"
     }
 
     private fun restoreSystemSetting(key: String, rawBackup: String?) {
@@ -515,6 +762,8 @@ class FloatingService : Service() {
         const val ACTION_STOP = "com.example.lockscreen.ACTION_STOP"
         const val ACTION_UPDATE_BALL_SIZE = "com.example.lockscreen.ACTION_UPDATE_BALL_SIZE"
         const val ACTION_EXIT_BLACK_SCREEN = "com.example.lockscreen.ACTION_EXIT_BLACK_SCREEN"
+        const val ACTION_ENTER_BLACK_SCREEN = "com.example.lockscreen.ACTION_ENTER_BLACK_SCREEN"
+        const val ACTION_SYNC_LAN_CONTROL = "com.example.lockscreen.ACTION_SYNC_LAN_CONTROL"
         const val EXTRA_FLOAT_SIZE_DP = "extra_float_size_dp"
 
         @Volatile
@@ -524,5 +773,10 @@ class FloatingService : Service() {
 
         private const val CHANNEL_ID = "floating_service_channel"
         private const val NOTIFICATION_ID = 100
+        private const val SCREEN_OFF_WAKE_DEBOUNCE_MS = 500L
+        private const val SCREEN_OFF_WAKE_PENDING_TIMEOUT_MS = 1500L
+
+        private const val SECURE_KEY_POWER_BUTTON_INSTANT_LOCK = "lockscreen.power_button_instantly_locks"
+        private const val SECURE_KEY_LOCK_AFTER_TIMEOUT = "lock_screen_lock_after_timeout"
     }
 }

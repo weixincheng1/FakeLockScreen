@@ -10,7 +10,11 @@
     <string name="btn_stop_service">停止服务</string>
     <string name="label_ball_size_title">悬浮球大小</string>
     <string name="label_ball_size_value">%1$d dp</string>
-    <string name="tips_main">使用说明：\n1. 授权悬浮窗权限；\n2. 开启本应用的“音量键无障碍”；\n3. 确保已授予Root权限；\n4. 调整悬浮球大小并启动服务；\n5. 在任意页面长按悬浮球进入黑屏（仅关闭背光，系统继续渲染）；\n6. 同时按下音量加和音量减，退出黑屏。</string>
+    <string name="label_lan_control">启用局域网退出/黑屏控制</string>
+    <string name="label_lan_control_off">局域网控制已关闭</string>
+    <string name="label_lan_control_url">局域网控制地址：%1$s</string>
+    <string name="label_lan_control_tip">同一局域网设备访问此地址，可点击按钮进入或退出黑屏。</string>
+    <string name="tips_main">使用说明：\n1. 授权悬浮窗权限；\n2. 开启本应用的“音量键无障碍”；\n3. 确保已授予Root权限；\n4. 调整悬浮球大小并启动服务；\n5. 在任意页面长按悬浮球进入黑屏（仅关闭背光，系统继续渲染）；\n6. 同时按下音量加和音量减，退出黑屏；\n7. 可选开启“局域网控制”，网页按钮可远程进入/退出黑屏。</string>
 
     <string name="status_item_enabled">已开启</string>
     <string name="status_item_disabled">未开启</string>

@@ -11,15 +11,20 @@ import android.widget.Button
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.widget.SwitchCompat
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import java.util.Collections
+import java.net.NetworkInterface
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var textStatus: TextView
     private lateinit var textBallSizeValue: TextView
+    private lateinit var textLanAddress: TextView
     private lateinit var seekBallSize: SeekBar
+    private lateinit var switchLanControl: SwitchCompat
 
     private var rootAvailable = false
 
@@ -29,7 +34,9 @@ class MainActivity : AppCompatActivity() {
 
         textStatus = findViewById(R.id.textStatus)
         textBallSizeValue = findViewById(R.id.textBallSizeValue)
+        textLanAddress = findViewById(R.id.textLanAddress)
         seekBallSize = findViewById(R.id.seekBallSize)
+        switchLanControl = findViewById(R.id.switchLanControl)
 
         val btnGrantPermission: Button = findViewById(R.id.btnGrantPermission)
         val btnGrantAccessibility: Button = findViewById(R.id.btnGrantAccessibility)
@@ -38,6 +45,7 @@ class MainActivity : AppCompatActivity() {
 
         rootAvailable = RootShell.isRootAvailable()
         initBallSizeSeekBar()
+        initLanControlSwitch()
 
         btnGrantPermission.setOnClickListener {
             openOverlayPermissionPage()
@@ -58,6 +66,7 @@ class MainActivity : AppCompatActivity() {
         rootAvailable = RootShell.isRootAvailable(forceCheck = true)
         updatePermissionStatus()
         refreshBallSizeText(getSavedBallSizeDp())
+        refreshLanAddressText()
     }
 
     private fun startServiceWithPermissions() {
@@ -184,6 +193,20 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
+    private fun initLanControlSwitch() {
+        switchLanControl.isChecked = isLanControlEnabled()
+        switchLanControl.setOnCheckedChangeListener { _, isChecked ->
+            saveLanControlEnabled(isChecked)
+            refreshLanAddressText()
+            if (FloatingService.isRunning) {
+                val intent = Intent(this, FloatingService::class.java).apply {
+                    action = FloatingService.ACTION_SYNC_LAN_CONTROL
+                }
+                startService(intent)
+            }
+        }
+    }
+
     private fun updateSizeIfServiceRunning(sizeDp: Int) {
         if (!FloatingService.isRunning) {
             return
@@ -211,6 +234,41 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshBallSizeText(sizeDp: Int) {
         textBallSizeValue.text = getString(R.string.label_ball_size_value, sizeDp)
+    }
+
+    private fun isLanControlEnabled(): Boolean {
+        return getSharedPreferences(AppSettings.PREFS_NAME, MODE_PRIVATE).getBoolean(
+            AppSettings.KEY_LAN_CONTROL_ENABLED,
+            false
+        )
+    }
+
+    private fun saveLanControlEnabled(enabled: Boolean) {
+        getSharedPreferences(AppSettings.PREFS_NAME, MODE_PRIVATE)
+            .edit()
+            .putBoolean(AppSettings.KEY_LAN_CONTROL_ENABLED, enabled)
+            .apply()
+    }
+
+    private fun refreshLanAddressText() {
+        if (!isLanControlEnabled()) {
+            textLanAddress.text = getString(R.string.label_lan_control_off)
+            return
+        }
+        val url = "http://${getLocalIpv4Address()}:${AppSettings.DEFAULT_LAN_PORT}/"
+        textLanAddress.text = getString(R.string.label_lan_control_url, url) +
+            "\n" + getString(R.string.label_lan_control_tip)
+    }
+
+    private fun getLocalIpv4Address(): String {
+        return runCatching {
+            Collections.list(NetworkInterface.getNetworkInterfaces())
+                .asSequence()
+                .flatMap { Collections.list(it.inetAddresses).asSequence() }
+                .firstOrNull { !it.isLoopbackAddress && it.hostAddress?.contains(':') == false }
+                ?.hostAddress
+                ?: "0.0.0.0"
+        }.getOrDefault("0.0.0.0")
     }
 
     private fun isVolumeAccessibilityEnabled(): Boolean {
