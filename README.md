@@ -86,30 +86,9 @@ adb install -r app\build\outputs\apk\debug\app-debug.apk
 
 ---
 
-## 7. 投屏（qtscrcpy）说明
+## 7. 常见问题与排障
 
-本项目当前策略对投屏友好：
-
-- 手机本机：背光关闭，接近黑屏
-- 投屏端（`qtscrcpy`）：仍可见画面并可正常操作
-
-如果本机还能看到明显亮度，请看“常见问题排障”。
-
----
-
-## 8. 组合键解锁机制
-
-`VolumeKeyAccessibilityService` 中使用了“时间窗组合键”策略：
-
-- 音量加/减按下时间差 `<= 1200ms` 判定为组合键
-- 去抖时间 `450ms`
-- 触发后有 `700ms` 释放保护，避免音量键残留导致系统音量条异常
-
----
-
-## 9. 常见问题与排障
-
-### 9.1 长按悬浮球后没有黑屏
+### 7.1 长按悬浮球后没有黑屏
 
 检查项：
 
@@ -117,7 +96,7 @@ adb install -r app\build\outputs\apk\debug\app-debug.apk
 - Magisk/SuperSU 是否已给本应用永久授权
 - 是否被省电策略杀后台（请加白名单）
 
-### 9.2 黑屏后仍有可见亮度
+### 7.2 黑屏后仍有可见亮度
 
 可能原因：
 
@@ -130,21 +109,21 @@ adb install -r app\build\outputs\apk\debug\app-debug.apk
 - 在黑屏中保持服务运行（不要被系统省电中断）
 - 若仍有亮度，提取设备节点定制（见 9.5）
 
-### 9.3 音量加减同时按，退出成功率不高
+### 7.3 音量加减同时按，退出成功率不高
 
 建议手法：
 
 - 两键间隔控制在 1 秒内
 - 避免长按其中一个键再按另一个
 
-### 9.4 退出后音量图标反复出现
+### 7.4 退出后音量图标反复出现
 
 当前版本已加释放保护。若仍偶发：
 
 - 先松开两键，再等待 1 秒
 - 再次进入/退出黑屏复位状态
 
-### 9.5 需要做机型背光节点定制
+### 7.5 需要做机型背光节点定制
 
 请在设备上执行并保存输出：
 
@@ -156,7 +135,7 @@ su -c "ls -R /sys/class/backlight /sys/class/leds /sys/class/graphics | head -n 
 
 ---
 
-## 10. 运行与安全注意事项
+## 8. 运行与安全注意事项
 
 - 本项目会写入系统亮度与背光节点，属于高权限行为
 - 异常关机/强杀可能导致亮度状态未及时恢复
@@ -164,27 +143,7 @@ su -c "ls -R /sys/class/backlight /sys/class/leds /sys/class/graphics | head -n 
 - 不同 ROM/内核兼容性差异较大，建议逐机验证
 
 ---
-
-## 11. 关键代码结构
-
-- `app/src/main/java/com/example/lockscreen/MainActivity.kt`  
-  主界面、权限引导、悬浮球大小调节、启动/停止服务
-
-- `app/src/main/java/com/example/lockscreen/FloatingService.kt`  
-  前台服务、悬浮球拖拽/长按、背光黑屏执行与恢复
-
-- `app/src/main/java/com/example/lockscreen/VolumeKeyAccessibilityService.kt`  
-  音量组合键监听与黑屏退出逻辑
-
-- `app/src/main/java/com/example/lockscreen/RootShell.kt`  
-  Root 命令执行封装
-
-- `app/src/main/AndroidManifest.xml`  
-  权限与服务声明（悬浮窗、前台服务、无障碍服务）
-
----
-
-## 12. 快速命令清单
+## 9. 快速命令清单
 
 构建：
 
