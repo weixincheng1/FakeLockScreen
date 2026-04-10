@@ -1,0 +1,33 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">黑屏挂机助手</string>
+
+    <string name="title_main">黑屏挂机助手</string>
+    <string name="desc_main">悬浮球可在任意界面使用。长按悬浮球会直接覆盖当前页面进入黑屏，不会切走前台应用。</string>
+    <string name="btn_grant_permission">授权悬浮窗权限</string>
+    <string name="btn_grant_accessibility">开启音量键无障碍</string>
+    <string name="btn_start_service">启动悬浮服务</string>
+    <string name="btn_stop_service">停止服务</string>
+    <string name="label_ball_size_title">悬浮球大小</string>
+    <string name="label_ball_size_value">%1$d dp</string>
+    <string name="tips_main">使用说明：\n1. 授权悬浮窗权限；\n2. 开启本应用的“音量键无障碍”；\n3. 确保已授予Root权限；\n4. 调整悬浮球大小并启动服务；\n5. 在任意页面长按悬浮球进入黑屏（仅关闭背光，系统继续渲染）；\n6. 同时按下音量加和音量减，退出黑屏。</string>
+
+    <string name="status_item_enabled">已开启</string>
+    <string name="status_item_disabled">未开启</string>
+    <string name="status_permission_summary">权限状态：\n- 悬浮窗权限：%1$s\n- 音量键无障碍：%2$s\n- Root可用：%3$s</string>
+
+    <string name="toast_overlay_required">请先授权悬浮窗权限</string>
+    <string name="toast_accessibility_recommended">建议开启“音量键无障碍”，否则无法通过音量加减同时按下退出黑屏</string>
+    <string name="toast_root_not_available">当前设备未获得Root授权，无法关闭背光黑屏</string>
+    <string name="toast_service_started">服务已启动，悬浮球已显示</string>
+    <string name="toast_service_stopped">服务已停止</string>
+
+    <string name="notification_channel_name">黑屏挂机服务</string>
+    <string name="notification_channel_desc">保持悬浮球和背光黑屏模式运行</string>
+    <string name="notification_title">黑屏挂机服务运行中</string>
+    <string name="notification_content">长按悬浮球关闭背光黑屏，音量加减同时按下可退出</string>
+    <string name="notification_action_exit_black">解除黑屏</string>
+    <string name="notification_action_stop">停止</string>
+
+    <string name="accessibility_service_desc">监听音量键组合，用于退出黑屏覆盖层</string>
+</resources>
